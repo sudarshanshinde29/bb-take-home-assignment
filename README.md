@@ -19,10 +19,14 @@ We ran the full pipeline with the **hybrid router + inline Azure LLM judge** (`m
 
 | Artifact | Status |
 |----------|--------|
-| Feature caches (`cache/store_*_features.jsonl`) | **Complete** (all A + B rows) |
-| `matches.csv` | **Partial** — only the first ~4.5k Store A rows processed before stop (not all 233,199) |
-| `cache/judge_results.jsonl` | Partial judge cache from the stopped run (resumable) |
-| `matches_only.csv` | Optional export via `export_matched_pairs.py` (~687 paired rows from partial `matches.csv`) |
+| `cache/store_a_features.jsonl` | **Complete** locally (233,199 A rows, engineered fields). **Not on GitHub** (~171 MB; over file limit) |
+| `cache/store_b_features.jsonl` | **Complete** locally (55,516 B rows). **Not on GitHub** (gitignored with `cache/`) |
+| `cache/judge_results.jsonl` | **Partial** — LLM decisions from stopped match run. Local only; resumable |
+| `cache/match_meta.jsonl` | **Partial** — per-row `source`, `match_type`, `score` for debugging |
+| `matches.csv` | **Partial** — ~4.5k / 233,199 Store A rows (in repo) |
+| `matches_only.csv` | Paired rows only (`export_matched_pairs.py`, ~687 from partial run) |
+
+All `cache/*` files are produced by the pipeline and listed in the [cache artifacts](#cache-artifacts-gitignored-on-github) section; they are omitted from the remote repo only because of GitHub size limits.
 
 The **algorithm and code are complete**; the gap is **compute/time**, not missing implementation. Reviewers can resume or rerun locally (see below).
 
@@ -391,8 +395,8 @@ BetterBasket-TakeHomeAssessment/
 ├── matches_only.csv                   # Optional: export script output (paired rows only)
 ├── analysis_output/
 │   └── identifier_analysis_report.txt
-├── cache/                             # Generated (large; see .gitignore)
-│   ├── store_a_features.jsonl
+├── cache/                             # Gitignored — rebuild locally (store_a ~171MB)
+│   ├── store_a_features.jsonl         #   exceeds GitHub 100MB file limit
 │   ├── store_b_features.jsonl
 │   ├── judge_results.jsonl
 │   └── match_meta.jsonl
@@ -400,6 +404,35 @@ BetterBasket-TakeHomeAssessment/
 ├── grocery_store_*_final.csv          # Input (place locally; gitignored)
 └── openai_creds.yaml                  # Azure creds (gitignored; see below)
 ```
+
+---
+
+## Cache artifacts (gitignored on GitHub)
+
+We **did build** the full feature caches and partial judge/meta caches locally. They are **not missing from the project** — they are **excluded from the Git push** because `cache/store_a_features.jsonl` is **~171 MB** (GitHub’s per-file limit is **100 MB**). Everything under `cache/` is in `.gitignore`.
+
+| File | Produced by | Contents | Our run |
+|------|-------------|----------|---------|
+| `cache/store_a_features.jsonl` | `build_features.py` | One JSON line per Walmart row: `brand_normalized`, `size`, `search_tokens`, `match_text`, PL flag, variants, etc. | **Complete** (233,199 rows) |
+| `cache/store_b_features.jsonl` | `build_features.py` | Same schema for Wegmans (~37 MB) | **Complete** (55,516 rows) |
+| `cache/judge_results.jsonl` | `match_products.py` / `llm_judge.py` | Cached Azure judge JSON per `item_id_A` | **Partial** (from stopped run) |
+| `cache/match_meta.jsonl` | `match_products.py` | `item_id_A`, `item_id_B`, `match_type`, `source`, `score` | **Partial** |
+
+**After clone**, regenerate at least the feature files (required for matching):
+
+```bash
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python scripts/build_features.py
+# Writes cache/store_a_features.jsonl and cache/store_b_features.jsonl
+```
+
+Then optionally rerun matching (creates/extends `judge_results.jsonl` and `match_meta.jsonl`):
+
+```bash
+.venv/bin/python scripts/match_products.py
+```
+
+Submitted **`matches.csv`** / **`matches_only.csv`** on GitHub are from our **partial** match run; a full 233k-row `matches.csv` needs `match_products.py` on your machine (feature step above is ~1–2 minutes).
 
 ---
 
@@ -415,6 +448,14 @@ python3 -m venv .venv
 ### 2. Data
 
 Place assessment CSVs in the repo root (see `.gitignore` — not committed). Sample files can be used for smoke tests if you copy them without ignoring.
+
+### 2b. Feature cache (required after clone)
+
+Rebuilds `cache/store_a_features.jsonl` and `cache/store_b_features.jsonl` (see [cache artifacts](#cache-artifacts-gitignored-on-github)):
+
+```bash
+.venv/bin/python scripts/build_features.py
+```
 
 ### 3. LLM credentials (full run with judge)
 
@@ -476,6 +517,7 @@ Re-run identifier analysis:
 - **Executable algorithm:** `run_matching.py` / `scripts/match_products.py` reproduces `matches.csv` given the input CSVs and feature caches.
 - **Analysis artifact:** `analysis_output/identifier_analysis_report.txt` documents why we did not use UPC-first matching.
 - **Partial `matches.csv`:** Submitted run was **stopped early (~2%, ~4.3k rows)** due to **time constraints** (~69h projected remaining at 1.08 s/item). Full 233,199-row output requires rerunning the matcher locally.
+- **`cache/` not on GitHub:** Full `store_a_features.jsonl` / `store_b_features.jsonl` built locally; rebuild with `build_features.py` after clone (171 MB file exceeds GitHub limit).
 - **Paired rows only:** `scripts/export_matched_pairs.py` → `matches_only.csv` for rows with a non-empty `item_id_B`.
 - **Secrets:** Do not commit `openai_creds.yaml`.
 
