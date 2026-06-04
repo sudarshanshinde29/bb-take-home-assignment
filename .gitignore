@@ -1,0 +1,20 @@
+openai_creds.yaml
+
+# Generated caches (store_a_features.jsonl is ~171MB — exceeds GitHub limit)
+cache/
+
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+grocery_store_a_items_final.csv
+grocery_store_b_items_final.csv
+grocery_store_a_items_sample.csv
+grocery_store_b_items_sample.csv
+
+openai_creds.yaml
+engineering_technical_assessment.txt
+Understanding.txt
+
+.pdf
